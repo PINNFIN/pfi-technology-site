@@ -12,10 +12,10 @@ msg.setAttribute('role','status');msg.setAttribute('aria-live','polite');f.appen
 const select=f.querySelector('[name=service]');if(q.get('service')&&Array.from(select.options).some(o=>o.value===q.get('service')))select.value=q.get('service');
 f.addEventListener('submit',async function(e){
 e.preventDefault();if(!f.reportValidity())return;b.disabled=true;msg.textContent='Sending inquiry...';
-const d=Object.fromEntries(new FormData(f));d._subject='PFI TECH - New Project Inquiry - '+d.service;d._template='table';d.source='PFI Technologies website';
+const d=Object.fromEntries(new FormData(f));d._subject='PFI TECH - New Project Inquiry - '+d.service;d._template='table';d.source='PFI Technologies website';d._url='https://pfitechnology.com/contact/';
 for(const k of ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','gclid','gbraid','wbraid'])if(q.get(k))d[k]=q.get(k).slice(0,200);
-try{const r=await fetch('https://formsubmit.co/ajax/joseph@pinnaclefinancialusa.com',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(d)});const x=await r.json();if(!r.ok||x.success===false||x.success==='false')throw Error('Not confirmed');msg.textContent='Thank you. Your project inquiry has been submitted.';window.dataLayer=window.dataLayer||[];window.dataLayer.push({event:'pfi_project_inquiry_success',service:d.service});f.reset()}
-catch(e){msg.textContent='Submission could not be confirmed. Please try again or contact info@pfitechnology.com.'}finally{b.disabled=false}
+try{const r=await fetch('https://formsubmit.co/ajax/joseph@pinnaclefinancialusa.com',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(d)});const x=await r.json();if(!r.ok||!(x.success===true||x.success==='true'))throw Error(String(x.message||'Form service did not confirm the submission'));msg.textContent='Thank you. Your project inquiry has been submitted.';window.dataLayer=window.dataLayer||[];window.dataLayer.push({event:'pfi_project_inquiry_success',service:d.service});f.reset()}
+catch(e){const reason=e instanceof Error?e.message:'';msg.textContent=/activation|activate form/i.test(reason)?'This form requires email activation before inquiries can be delivered. Please email info@pfitechnology.com while we activate it.':'Submission could not be confirmed. Please email info@pfitechnology.com or try again.'}finally{b.disabled=false}
 });
 })();
 </script></body></html>
