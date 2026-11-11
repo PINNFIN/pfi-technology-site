@@ -9,7 +9,6 @@
 (function(){
  const form=document.getElementById('inquiry'), button=form.querySelector('button[type="submit"]');
  const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-live','polite');form.appendChild(status);
- const emailLink=document.createElement('a');emailLink.href='mailto:info@pfitechnology.com?subject=PFI%20Technology%20Project%20Inquiry';emailLink.textContent='Email PFI Technology directly';emailLink.style.cssText='display:inline-block;margin-top:8px;color:#15489b;text-decoration:underline;font-weight:600';form.appendChild(emailLink);
  const params=new URLSearchParams(location.search),service=form.querySelector('[name="service"]');
  if(params.get('service')&&Array.from(service.options).some(o=>o.value===params.get('service')))service.value=params.get('service');
  const api='https://pfi-contact-api.vercel.app/api';let active=false;
