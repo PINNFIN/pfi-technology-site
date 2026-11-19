@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PFI Construction Intelligence | Development Document & Financial Intelligence Workspace</title>
+<meta name="description" content="Browser-local PFI synthetic development financial intelligence testing workspace. Upload source documents, reconcile assumptions, and populate development dashboards.">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="/assets/pfi-technology-logo.png">
+<link rel="stylesheet" href="./workspace.css">
+<script defer src="/assets/vendor/pdf.min.js"></script>
+<script defer src="/assets/vendor/xlsx.full.min.js"></script>
+<script defer src="/assets/vendor/jszip.min.js"></script>
+<script defer src="./workspace.js"></script>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <a href="/construction/" class="logo"><span class="mark">PFI</span><span><strong>Construction</strong><small>INTELLIGENCE</small></span></a>
+  <div class="side-label">DEVELOPMENT WORKSPACE</div>
+  <nav aria-label="Workspace views" id="nav">
+    <button data-view="overview" class="selected">◫ <span>Executive Dashboard</span></button>
+    <button data-view="documents">⇧ <span>Document Intake</span><span class="navcount" id="side-files">0</span></button>
+    <button data-view="budget">▥ <span>Development Budget</span></button>
+    <button data-view="capital">◇ <span>Capital & Construction</span></button>
+    <button data-view="cashflow">▤ <span>36-Month Cash Flow</span></button>
+    <button data-view="sellout">▦ <span>Unit Sellout</span></button>
+    <button data-view="diligence">☷ <span>Due Diligence</span></button>
+    <button data-view="exceptions">⚑ <span>Exceptions & Controls</span><span class="navcount" id="side-exceptions">0</span></button>
+  </nav>
+  <div class="side-bottom"><span class="pill blue">DOCUMENT-DRIVEN QA · V1</span><p>Fictional data only. This website is not a secure client records system.</p><a href="/construction/">← PFI Construction website</a></div>
+</aside>
+<div class="main">
+<header class="top">
+ <div class="top-left"><div class="breadcrumb">PFI Technologies / Construction Intelligence / <strong>Financial Workspace</strong></div><div class="top-project" id="top-project">New blank development project</div></div>
+ <div class="top-actions"><span class="pill" id="status">BLANK CANVAS</span><button id="btn-export" class="btn light" disabled>Export Report</button><button class="btn outline" id="btn-reset">Reset Workspace</button></div>
+</header>
+<div class="public-warning"><strong>Testing environment:</strong> Files are processed in this browser only and not sent to PFI servers. The workspace does not retain projects after a refresh. Use synthetic documents only; automatic financial results are provisional and require review.</div>
+<div class="container">
+<section class="view active" id="view-overview">
+ <div class="page-heading"><div><div class="eyebrow">PROJECT FINANCIAL COMMAND CENTER</div><h1>Development Intelligence</h1><p>From source documents to the development budget, cash flow, financial controls, and executive decision-making.</p></div><button class="btn primary" data-go="documents">＋ Upload Deal Documents</button></div>
+ <div id="overview-empty" class="start-card">
+  <div class="start-mark">◇</div><div class="eyebrow">CLEAN CANVAS — NO SAMPLE VALUES</div><h2>Bring in your entire development deal.</h2>
+  <p>Drag a folder's PDFs and Excel files, or upload the complete fictional test-pack ZIP. PFI will read supported documents, populate its financial dashboards, and identify unresolved discrepancies.</p>
+  <div class="row"><button class="btn primary large" data-go="documents">Upload Documents →</button><span>PDF · Excel · Word · CSV · JSON · ZIP</span></div>
+  <div class="micro">No figures are loaded until you upload something.</div>
+ </div>
+ <div id="overview-live" hidden>
+  <div class="metrics">
+   <article class="metric"><span>Total development cost</span><strong id="kpi-cost">—</strong><small>Document-derived base uses</small></article>
+   <article class="metric"><span>Gross sale proceeds</span><strong id="kpi-gross">—</strong><small>Condo + retail sellout</small></article>
+   <article class="metric"><span>Net sale proceeds</span><strong id="kpi-net">—</strong><small>After selling expenses</small></article>
+   <article class="metric accent"><span>Profit before financing</span><strong id="kpi-profit">—</strong><small>Excludes construction interest & fees</small></article>
+  </div>
+  <div class="grid twothird">
+   <article class="panel"><div class="panel-header"><div><h2>Project underwriting</h2><p id="project-subtitle">Source-driven financial summary</p></div><span class="pill blue" id="model-confidence">PROVISIONAL</span></div>
+    <div id="financial-bridge"></div><div id="model-gaps" class="helpbox"></div>
+   </article>
+   <article class="panel"><div class="panel-header"><div><h2>Intake health</h2><p>Documents, model coverage, and unresolved controls</p></div></div><div class="health-stats"><div><strong id="health-files">0</strong><span>Files processed</span></div><div><strong id="health-fields">0</strong><span>Mapped fields</span></div><div><strong id="health-issues">0</strong><span>Review flags</span></div></div><div id="health-list"></div></article>
+  </div>
+  <div class="grid equal">
+   <article class="panel"><div class="panel-header"><div><h2>Development uses</h2><p>Cost mix sourced from approved-intent base records</p></div></div><div id="overview-cost-bars" class="bars"></div></article>
+   <article class="panel"><div class="panel-header"><div><h2>Cash flow preview</h2><p>Monthly development spend and sale closings</p></div></div><div id="overview-chart" class="chart-holder"></div></article>
+  </div>
+ </div>
+</section>
+<section class="view" id="view-documents">
+ <div class="page-heading"><div><div class="eyebrow">UNIVERSAL DOCUMENT INTAKE</div><h1>Upload & Extract</h1><p>Choose individual documents or the ZIP package containing all fictional source files. Each upload immediately refreshes the dashboard.</p></div><button class="btn light" data-go="overview">View Financial Dashboard →</button></div>
+ <div class="mode-switch" role="group" aria-label="Project mode"><button class="active" id="mode-blank">＋ Blank Project</button><button id="mode-test">◇ Fictional Deal Test</button><span id="mode-note">Blank workspace · No preloaded data</span></div>
+ <div class="grid twothird">
+  <article class="panel">
+   <div class="panel-header"><div><h2>01 / Development documents</h2><p>Files stay in your browser. Upload again after closing this tab.</p></div><span id="queued-count" class="pill">0 FILES</span></div>
+   <div class="drop-area" id="drop-area" tabindex="0" role="button" aria-label="Choose files to upload"><div class="drop-icon">⇧</div><h3>Drop PDF, Excel, Word, CSV, JSON, or a ZIP here</h3><p>Upload the entire Cypress Bay test ZIP, or drag multiple documents together.</p><button type="button" class="btn primary" id="pick-files">Browse Files</button><input id="file-input" type="file" accept=".pdf,.xlsx,.xlsm,.xls,.docx,.csv,.txt,.json,.zip" multiple hidden></div>
+   <div class="list-header"><h3>Document queue <span id="files-count-label">(0)</span></h3><button class="textbtn" id="clear-files">Clear all ×</button></div>
+   <div id="file-list" class="file-list"><div class="empty-small">No files yet. Upload your deal documents to populate the workspace.</div></div>
+   <div class="actions-bar"><button class="btn primary" id="process-files" disabled>↻ Reprocess All Documents</button><span id="process-note" class="text-muted">Ready for documents.</span></div>
+  </article>
+  <aside class="panel">
+   <div class="panel-header"><div><h2>02 / Extraction & review</h2><p>Auto-population with source traceability</p></div></div>
+   <div class="review-stats"><div><strong id="found-fields">0</strong><span>Input candidates</span></div><div><strong id="confirmed-fields">0</strong><span>Model fields</span></div><div><strong id="flagged-fields">0</strong><span>Flags</span></div></div>
+   <div class="info-list"><div><strong>Automatically populate</strong><span>Uncontested, structured development fields</span></div><div><strong>Hold or exclude</strong><span>Unapproved revisions, pending change orders and unrelated projects</span></div><div><strong>Financial evidence</strong><span>Every calculated value links back to a source</span></div><div><strong>Reset safely</strong><span>The × beside a file removes its financial contribution</span></div></div>
+   <div class="warn">An automatic match is a provisional model input—not an approved accounting transaction. Financially consequential documents must be reconciled and authorized.</div>
+  </aside>
+ </div>
+ <article class="panel" style="margin-top:18px"><div class="panel-header"><div><h2>Extracted financial assumptions</h2><p>Current modeled values, supporting sources, and excluded conflicts</p></div></div><div id="assumptions-table"></div></article>
+</section>
+<section class="view" id="view-budget"><div class="page-heading"><div><div class="eyebrow">COST INTELLIGENCE</div><h1>Development Budget</h1><p>Base development uses, cost composition, and approved-change review.</p></div></div><div id="budget-content"></div></section>
+<section class="view" id="view-capital"><div class="page-heading"><div><div class="eyebrow">CONSTRUCTION FINANCE</div><h1>Capital & Construction</h1><p>Loan assumptions, contract payments, commitments and change-order controls.</p></div></div><div id="capital-content"></div></section>
+<section class="view" id="view-cashflow"><div class="page-heading"><div><div class="eyebrow">DEVELOPMENT TIMELINE</div><h1>36-Month Cash Flow</h1><p>Scheduled development costs, illustrative loan draws and sale proceeds.</p></div></div><div id="cashflow-content"></div></section>
+<section class="view" id="view-sellout"><div class="page-heading"><div><div class="eyebrow">REVENUE INTELLIGENCE</div><h1>Unit Sellout</h1><p>Unit-by-unit pricing, closing assumptions and condominium revenue reconciliation.</p></div></div><div id="sellout-content"></div></section>
+<section class="view" id="view-diligence"><div class="page-heading"><div><div class="eyebrow">RISK & COMPLIANCE</div><h1>Due Diligence</h1><p>Source-supported permit gates and outstanding risks; no unsupported approvals inferred.</p></div></div><div id="diligence-content"></div></section>
+<section class="view" id="view-exceptions"><div class="page-heading"><div><div class="eyebrow">FINANCIAL CONTROL CENTER</div><h1>Exceptions & Reconciliation</h1><p>Review conflicting assumptions, unapproved changes and missing support before relying on results.</p></div><button class="btn light" id="exceptions-export">Export Evidence</button></div><div id="exceptions-content"></div></section>
+<footer>© PFI Technologies · Synthetic development-document validation · Not a certified accounting system, lender approval, or investment recommendation.</footer>
+</div></div></div>
+</body></html>
