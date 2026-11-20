@@ -104,9 +104,34 @@ function fieldExtract(doc){
  }
  const seen=new Set();doc.fields=out.filter(f=>{const k=f.key+'|'+String(f.value)+'|'+f.location;if(seen.has(k))return false;seen.add(k);return true});
 }
-async function parsePDF(bytes){if(!window.pdfjsLib)throw Error('PDF reader failed to load. Reload the page and try again.');pdfjsLib.GlobalWorkerOptions.workerSrc='/assets/vendor/pdf.worker.min.js';
- const task=pdfjsLib.getDocument({data:bytes,useSystemFonts:true,isEvalSupported:false});const pdf=await task.promise;const lines=[];
- try{for(let p=1;p<=Math.min(pdf.numPages,130);p++){
+async function parsePDF(bytes){
+ if(!window.pdfjsLib)throw Error('PDF reader failed to load. Reload the page and try again.');
+ pdfjsLib.GlobalWorkerOptions.workerSrc='/assets/vendor/pdf.worker.min.js';
+ // Important for Safari/WebKit: Uint8Array instances returned by JSZip are
+ // sometimes backed by non-transferable storage. Handing that view directly
+ // to the PDF.js worker can throw "The object can not be cloned."
+ // A Blob URL makes the worker fetch standard bytes, avoiding that transfer.
+ const independent=new Uint8Array(bytes.byteLength);
+ independent.set(bytes);
+ let blobUrl=null,pdf=null,lastError=null;
+ const options={useSystemFonts:true,isEvalSupported:false};
+ try{
+  blobUrl=URL.createObjectURL(new Blob([independent],{type:'application/pdf'}));
+  try{
+   pdf=await pdfjsLib.getDocument({...options,url:blobUrl}).promise;
+  }catch(err){
+   lastError=err;
+   // Some privacy configurations block blob reads inside workers. Retry
+   // with a fresh, dedicated ArrayBuffer (never with the JSZip input view).
+   const retryData=new Uint8Array(independent.byteLength);
+   retryData.set(independent);
+   try{pdf=await pdfjsLib.getDocument({...options,data:retryData}).promise}
+   catch(err2){
+    throw new Error('PDF parser could not read this file (URL mode: '+String(lastError?.message||lastError)+'; byte mode: '+String(err2?.message||err2)+').');
+   }
+  }
+  const lines=[];
+ for(let p=1;p<=Math.min(pdf.numPages,130);p++){
   const pg=await pdf.getPage(p),c=await pg.getTextContent(),byY=[];
   // Arrange PDF glyphs into visual lines so labeled amounts are extractable.
   for(const item of c.items){
@@ -118,9 +143,13 @@ async function parsePDF(bytes){if(!window.pdfjsLib)throw Error('PDF reader faile
   }
   byY.sort((a,b)=>b.y-a.y);
   for(const ln of byY){ln.items.sort((a,b)=>a.x-b.x);lines.push(ln.items.map(i=>i.s).join(' ').replace(/\s+/g,' ').trim())}
- }}finally{pdf.destroy()}
+ }
  if(!lines.some(s=>s))throw Error('This PDF has no selectable text. Image-only scans need OCR, which is not yet enabled.');
  return {lines,sheets:{},pages:pdf.numPages};
+ }finally{
+  if(pdf)try{await pdf.destroy()}catch(_){/* ignore teardown failure */}
+  if(blobUrl)URL.revokeObjectURL(blobUrl);
+ }
 }
 async function parseExcel(bytes){if(!window.XLSX)throw Error('Excel reader failed to load. Reload and try again.');
  const wb=XLSX.read(bytes,{type:'array',cellDates:false,cellFormula:false});const sheets={};let lines=[];
