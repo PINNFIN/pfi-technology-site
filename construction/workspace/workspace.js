@@ -133,7 +133,7 @@ async function parseExcel(bytes){if(!window.XLSX)throw Error('Excel reader faile
 }
 async function parseDOCX(bytes){if(!window.JSZip)throw Error('Word reader unavailable.');const zip=await JSZip.loadAsync(bytes);
  const part=zip.file('word/document.xml');if(!part)throw Error('Word document has no readable content.');
- const xml=await part.async('string');const dom=new DOMParser().parseFromString(xml,'application/xml');const ps=[...dom.getElementsByTagName('w:p')];const lines=ps.map(p=>[...p.getElementsByTagName('w:t')].map(n=>n.textContent).join('')).filter(Boolean);
+ const xml=await part.async('string');const dom=new DOMParser().parseFromString(xml,'application/xml');const ps=Array.from(dom.getElementsByTagName('w:p'));const lines=ps.map(p=>Array.from(p.getElementsByTagName('w:t')).map(n=>n.textContent).join('')).filter(Boolean);
  return {lines,sheets:{}}}
 function fromPlain(name,bytes){const txt=new TextDecoder().decode(bytes),ext=name.split('.').pop().toLowerCase();let lines=txt.split(/\r?\n/),sheets={};
  if(ext==='json'){try{
@@ -148,7 +148,7 @@ function docRisks(doc){
  if(doc.kind==='CONSTRUCTION BILLING')risk.push('Payment request is not certified. No payment or payable has been created.');
  if(doc.kind==='LENDER TERMS')risk.push('Indicative lender terms only; no borrowing or rate is approved.');
  if(doc.kind==='RENT ROLL / SEPARATE USE')risk.push('Rental schedule is not evidence of condominium sellout; not included in project units.');
- if(!doc.fields.length&&!Object.keys(doc.sheets).length)risk.push('No mapped Master Entry values: document retained for review only.');
+ if(!doc.fields.length&&!Object.keys(doc.sheets).length)risk.push('Document was read successfully; no direct master financial fields were mapped. Evidence retained for review.');
  if(/not executed|not verified|not started|unexecuted/i.test(txt)&&doc.kind!=='MASTER UNDERWRITING')risk.push('Unexecuted or unverified requirement may require approval.');
  return risk;
 }
@@ -218,9 +218,9 @@ function derive(){
  const permits=docs.flatMap(d=>(d.permits||[]).map(x=>({...x,source:d.name})));
  const risks=docs.flatMap(d=>(d.risks||[]).map(x=>({...x,source:d.name})));
  const commitments=docs.flatMap(d=>(d.commitments||[]).map(x=>({...x,source:d.name})));
- const changes=docs.filter(d=>d.change).map(d=>({...d.change,source:d.name}));
- const payments=docs.filter(d=>d.payment).map(d=>({...d.payment,source:d.name}));
- const lender=docs.filter(d=>d.loanTerms).map(d=>({...d.loanTerms,source:d.name}));
+ const changes=Array.from(docs.filter(d=>d.change).map(d=>({...d.change,source:d.name})).reduce((by,c)=>{const key=c.code||c.source.replace(/\.(docx|pdf)$/i,'');const old=by.get(key);if(!old||(/\.pdf$/i.test(c.source)&&!/\.pdf$/i.test(old.source)))by.set(key,c);return by},new Map()).values());
+ const payments=Array.from(docs.filter(d=>d.payment).map(d=>({...d.payment,source:d.name})).reduce((by,p)=>{const key=p.source.replace(/\.(docx|pdf)$/i,'');if(!by.has(key)||/\.pdf$/i.test(p.source))by.set(key,p);return by},new Map()).values());
+ const lender=Array.from(docs.filter(d=>d.loanTerms).map(d=>({...d.loanTerms,source:d.name})).reduce((by,l)=>{const key=l.source.replace(/\.(docx|pdf)$/i,'');if(!by.has(key)||/\.pdf$/i.test(l.source))by.set(key,l);return by},new Map()).values());
  const draws=canonicalDraw?.draws||[],sellout=canonicalSell?.sellout||[],cap=canonicalCap?.capital||{};
  const approvedChanges=changes.filter(c=>c.status==='APPROVED');
  const pendingChanges=changes.filter(c=>c.status!=='APPROVED');
@@ -244,13 +244,15 @@ function derive(){
  const unapproved=docs.filter(d=>d.kind==='REVISED / UNAPPROVED');
  if(unapproved.length)issues.push({level:'high',title:'Superseded budget revision held',detail:'Budget revisions marked unapproved or superseded cannot overwrite the controlled base.',source:unapproved.map(d=>d.name).join(', ')});
  const failed=state.docs.filter(d=>d.status==='error');
- for(const d of failed)issues.push({level:'critical',title:'Unable to parse '+d.name,detail:d.error||'Unknown extraction error.',source:d.name});
+ // Technical parser failures are operational errors, not financial review exceptions.
+ const errors=failed.map(d=>({title:'Upload processing failed: '+d.name,detail:d.error||'Unknown extraction error.',source:d.name}));
  const missing=Object.keys(fields).filter(k=>values[k]===undefined);
  if(docs.length&&missing.length)issues.push({level:'medium',title:'Incomplete master project fields',detail:missing.length+' fields are not supported by uploaded recognized documents: '+missing.slice(0,8).map(k=>fields[k].label).join(', ')+(missing.length>8?'…':''),source:'Master Entry'});
  if(docs.length&&!draws.length)issues.push({level:'medium',title:'Monthly construction forecast not available',detail:'Upload a dated construction schedule or integrated financing workbook. No timing is invented.',source:'Construction schedule'});
  if(docs.length&&!sellout.length)issues.push({level:'medium',title:'Unit sellout schedule not available',detail:'Upload a unit-by-unit pricing schedule. The platform will not infer unit values from gross sales alone.',source:'Sales schedule'});
  if(risks.length){const critical=risks.filter(r=>/critical/i.test(r.severity)&&!/^closed|resolved|approved$/i.test(r.status));if(critical.length)issues.push({level:'high',title:critical.length+' critical diligence items remain open',detail:'Permits, lender conditions and construction approvals remain unverified.',source:critical.slice(0,3).map(r=>r.id).join(', ')})}
- const m={docs,candidates,values,sources,conflicts,issues,missing,cost,gross,net,profit,cap,draws,sellout,permits,risks,commitments,changes,payments,lender,approvedDelta,approvedChanges,pendingChanges};
+ const duplicates=docs.filter(d=>docs.some(other=>other.id!==d.id&&other.name.replace(/\.(docx|pdf)$/i,'')===d.name.replace(/\.(docx|pdf)$/i,'')&&/\.docx$/i.test(d.name)&&/\.pdf$/i.test(other.name)));
+ const m={docs,candidates,values,sources,conflicts,issues,errors,duplicates,missing,cost,gross,net,profit,cap,draws,sellout,permits,risks,commitments,changes,payments,lender,approvedDelta,approvedChanges,pendingChanges};
  state.model=m;return m;
 }
 function viewEmpty(message){return '<div class="empty-view"><div style="font-size:36px;color:#4191c0">◇</div><h2>Nothing to calculate yet</h2><p>'+renderEsc(message||'Upload source deal documents to begin populating this view.')+'</p><button class="btn primary" data-go="documents">Upload documents →</button></div>'}
@@ -268,24 +270,27 @@ function renderOverview(m){const started=m.docs.length>0;$('overview-empty').hid
  $('project-subtitle').textContent=[m.values.name,m.values.city,m.values.state].filter(Boolean).join(' · ')||'Project details pending';
  $('financial-bridge').innerHTML=financialRow('Land acquisition',m.values.land)+financialRow('Residential construction',m.values.residential)+financialRow('Retail construction',m.values.retailcost)+financialRow('Parking construction',m.values.parkingcost)+financialRow('Indirect development costs',m.values.indirect)+financialRow('Total pre-finance uses',m.cost,true)+financialRow('Condominium sale proceeds',m.values.condosales)+financialRow('Retail sale proceeds',m.values.retailsales)+financialRow('Less selling expenses',m.values.salesexpenses)+financialRow('Net proceeds',m.net,true)+financialRow('Pre-financing profit',m.profit,true);
  $('model-gaps').innerHTML='Pre-financing model only. Approved change order scenario '+money(m.approvedDelta)+' remains separate until reconciled. Construction interest, lender fees, taxes, true loan draw mechanics and investment IRR are not calculated or certified here.';
- $('health-files').textContent=m.docs.length;$('health-fields').textContent=Object.keys(m.values).length;$('health-issues').textContent=m.issues.length;
+ $('health-files').textContent=m.docs.length;$('health-fields').textContent=Object.keys(m.values).length;$('health-issues').textContent=m.issues.length+' reviews · '+m.errors.length+' failures';
  $('health-list').innerHTML=m.issues.slice(0,6).map(x=>'<div class="risk-item"><i class="dot"></i><span>'+renderEsc(x.title)+'</span></div>').join('')||'<div class="risk-item">No flagged issues from available input.</div>';
  const costs=budgetKeys.map(k=>({label:fields[k].label,value:m.values[k]}));$('overview-cost-bars').innerHTML=costs.filter(x=>Number.isFinite(x.value)).map(x=>bar(x.label,x.value,m.cost||1,'',false)).join('')||viewEmpty('Upload a development budget.');
  $('overview-chart').innerHTML=chart(m.draws);
 }
 function renderDocList(m){const list=$('file-list');if(!state.docs.length){list.innerHTML='<div class="empty-small">No files yet. Upload your deal documents to populate the workspace.</div>'}else{
- list.innerHTML=state.docs.map(d=>'<div class="file-item"><div class="file-icon">▤</div><div class="file-info"><strong>'+renderEsc(d.name)+'</strong><small>'+(d.kind?renderEsc(d.kind)+' · ':'')+Math.round(d.size/1024)+' KB · '+(d.status==='parsed'?'<span style="color:#16795a">EXTRACTED</span>':d.status==='error'?'<span style="color:#ac4540">ERROR</span>':'READING…')+(d.error?' · '+renderEsc(d.error):'')+'</small></div><button type="button" class="file-x" data-remove="'+d.id+'" title="Remove and recalculate" aria-label="Remove '+renderEsc(d.name)+'">×</button></div>').join('');
+ list.innerHTML=state.docs.map(d=>'<div class="file-item"><div class="file-icon">▤</div><div class="file-info"><strong>'+renderEsc(d.name)+'</strong><small>'+(d.kind?renderEsc(d.kind)+' · ':'')+Math.round(d.size/1024)+' KB · '+(d.status==='parsed'?(d.fields?.length||d.draws?.length||d.sellout?.length?'<span style="color:#16795a">READ · FIELDS MAPPED</span>':'<span style="color:#196e91">READ · EVIDENCE ONLY</span>'):d.status==='error'?'<span style="color:#ac4540">UPLOAD FAILED</span>':'READING…')+(d.error?' · '+renderEsc(d.error):'')+'</small></div><button type="button" class="file-x" data-remove="'+d.id+'" title="Remove and recalculate" aria-label="Remove '+renderEsc(d.name)+'">×</button></div>').join('');
  list.querySelectorAll('[data-remove]').forEach(btn=>btn.addEventListener('click',()=>{const id=Number(btn.dataset.remove);state.docs=state.docs.filter(d=>d.id!==id);refresh()}));
  }
  $('files-count-label').textContent='('+state.docs.length+')';$('queued-count').textContent=state.docs.length+' FILES';$('side-files').textContent=state.docs.length;
  $('process-files').disabled=state.busy||!state.docs.length;$('clear-files').disabled=state.busy||!state.docs.length;
+ $('processed-count').textContent=m.docs.length;
+ $('failed-count').textContent=m.errors.length;
+ $('duplicate-count').textContent=m.duplicates.length;
  $('found-fields').textContent=Object.values(m.candidates).reduce((n,a)=>n+a.length,0);
  $('confirmed-fields').textContent=Object.keys(m.values).length;
  $('flagged-fields').textContent=m.issues.length;
  let rows=[];for(const [k,def] of Object.entries(fields)){
   const chosen=m.sources[k],candidates=m.candidates[k]||[],conflict=m.conflicts.find(c=>c.key===k);
   if(!chosen&&!candidates.length)continue;
-  const stat=!chosen?'EXCLUDED':conflict?'REVIEW':'MODELED';
+  const stat=!chosen?'EXCLUDED':conflict?'FINANCIAL REVIEW':'MODELED';
   rows.push('<tr><td><strong>'+renderEsc(def.label)+'</strong></td><td class="num">'+renderEsc(chosen?fieldDisplay(k,chosen.value):'—')+'</td><td>'+renderEsc(chosen?.source||'Not selected')+'<span class="source">'+renderEsc(chosen?.location||'')+'</span></td><td><span class="flag '+(stat==='MODELED'?'green':stat==='EXCLUDED'?'critical':'')+'">'+stat+'</span></td><td>'+renderEsc(conflict?conflict.values.map(v=>String(v.value)+' ['+v.source+']').join(' vs '):chosen?.evidence||'')+'</td></tr>');
  }
  $('assumptions-table').innerHTML=rows.length?'<div class="table-wrap"><table class="data-table"><thead><tr><th>Financial field</th><th class="num">Model value</th><th>Primary source</th><th>Control</th><th>Evidence / Exceptions</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>':viewEmpty('Extract the Master Underwriting PDF or the integrated financial workbook.');
@@ -334,20 +339,21 @@ function renderDiligence(m){if(!m.permits.length&&!m.risks.length){$('diligence-
  '<div class="section-stack" style="margin-top:17px"><article class="panel"><div class="panel-header"><div><h2>Permit and project gates</h2><p>Required external validation</p></div></div>'+(permitRows?'<div class="table-wrap"><table class="data-table"><thead><tr><th>Milestone</th><th>Target</th><th>Status</th><th>Decision impact</th><th>Source</th></tr></thead><tbody>'+permitRows+'</tbody></table></div>':'<div class="empty-small">No permit table uploaded.</div>')+'</article>'+
  '<article class="panel"><div class="panel-header"><div><h2>Risk register</h2><p>Unresolved conditions, compliance, capital and constructability</p></div></div>'+(riskRows?'<div class="table-wrap"><table class="data-table"><thead><tr><th>ID</th><th>Risk / Trigger</th><th>Severity</th><th>Status</th><th>Consequence</th></tr></thead><tbody>'+riskRows+'</tbody></table></div>':'<div class="empty-small">No risk register uploaded.</div>')+'</article></div>';
 }
-function renderExceptions(m){if(!m.docs.length){$('exceptions-content').innerHTML=viewEmpty('Upload source documents; conflicting figures and unsupported approvals will appear here.');return}
+function renderExceptions(m){if(!m.docs.length&&!m.errors.length){$('exceptions-content').innerHTML=viewEmpty('Upload source documents; financial reviews and actual upload failures will appear in separate sections.');return}
  const critical=m.issues.filter(x=>x.level==='critical').length,high=m.issues.filter(x=>x.level==='high').length;
+ const failureSection=m.errors.length?'<article class="panel" style="margin-bottom:17px;border-color:#e9b7b2"><div class="panel-header"><div><h2>Technical upload failures</h2><p>Files that could not be processed; separate from financial review requirements</p></div><span class="pill red">'+m.errors.length+' FAILED</span></div>'+m.errors.map(e=>'<div class="alert-card critical"><h3>Upload failed: '+renderEsc(e.source)+'</h3><p>'+renderEsc(e.detail)+'</p></div>').join('')+'</article>':'<div class="section-summary">No file-processing failures detected. Financial review items below are not upload errors.</div>';
  const rows=m.issues.map((x,i)=>'<article class="alert-card '+(x.level==='critical'?'critical':'')+'"><h3>⚑ '+renderEsc(x.title)+' <span class="flag '+(x.level==='critical'?'critical':'')+'">'+renderEsc(x.level.toUpperCase())+'</span></h3><p>'+renderEsc(x.detail)+'</p><small>Evidence: '+renderEsc(x.source)+'</small></article>').join('');
  const fileRisks=m.docs.flatMap(d=>(d.risksFound||[]).map(x=>({source:d.name,msg:x})));
- $('exceptions-content').innerHTML='<div class="metrics"><article class="metric"><span>Control flags</span><strong>'+integer(m.issues.length)+'</strong><small>Requiring financial review</small></article><article class="metric"><span>Critical extraction / modeling</span><strong>'+integer(critical)+'</strong><small>Data and integrity issues</small></article><article class="metric"><span>High-priority risks</span><strong>'+integer(high)+'</strong><small>Financial or approval exposure</small></article><article class="metric accent"><span>Conflicting master inputs</span><strong>'+integer(m.conflicts.length)+'</strong><small>Includes excluded revisions</small></article></div>'+
- '<div class="grid twothird"><article class="panel"><div class="panel-header"><div><h2>Financial model and source exceptions</h2><p>Controls are evidence-based, not AI-generated approvals</p></div></div>'+ (rows||'<div class="empty-small">No flags from processed source set. This does not guarantee absence of risk.</div>')+'</article>'+
+ $('exceptions-content').innerHTML=failureSection+'<div class="metrics"><article class="metric"><span>Financial review items</span><strong>'+integer(m.issues.length)+'</strong><small>Requiring financial review</small></article><article class="metric"><span>Technical file failures</span><strong>'+integer(m.errors.length)+'</strong><small>Data and integrity issues</small></article><article class="metric"><span>High-priority risks</span><strong>'+integer(high)+'</strong><small>Financial or approval exposure</small></article><article class="metric accent"><span>Conflicting master inputs</span><strong>'+integer(m.conflicts.length)+'</strong><small>Includes excluded revisions</small></article></div>'+
+ '<div class="grid twothird"><article class="panel"><div class="panel-header"><div><h2>Financial review required</h2><p>Controls are evidence-based, not AI-generated approvals</p></div></div>'+ (rows||'<div class="empty-small">No flags from processed source set. This does not guarantee absence of risk.</div>')+'</article>'+
  '<article class="panel"><div class="panel-header"><div><h2>Document-level review alerts</h2><p>Exceptions found in the source language or classification</p></div></div>'+(fileRisks.map(r=>'<div class="risk-item"><i class="dot"></i><div><strong>'+renderEsc(r.msg)+'</strong><div class="source">'+renderEsc(r.source)+'</div></div></div>').join('')||'<div class="empty-small">No document warnings detected.</div>')+'</article></div>';
 }
 function refresh(){
  const m=derive();renderOverview(m);renderDocList(m);renderBudget(m);renderCapital(m);renderCashflow(m);renderSellout(m);renderDiligence(m);renderExceptions(m);
  $('top-project').textContent=m.values.name|| (state.mode==='test'?'Fictional Development Test · Awaiting Documents':'New blank development project');
- $('status').textContent=state.busy?'PROCESSING':m.docs.length?'DOCUMENT-DRIVEN · PROVISIONAL':'BLANK CANVAS';
- $('status').className='pill '+(m.docs.length?'orange':'');
- $('side-exceptions').textContent=m.issues.length;$('btn-export').disabled=!m.docs.length;
+ $('status').textContent=state.busy?'PROCESSING':m.errors.length?m.errors.length+' FILE FAILURE(S)':m.docs.length?'MODEL POPULATED · REVIEW REQUIRED':'BLANK CANVAS';
+ $('status').className='pill '+(m.errors.length?'red':m.docs.length?'orange':'');
+ $('side-exceptions').textContent=m.issues.length+m.errors.length;$('btn-export').disabled=!m.docs.length;
 }
 function showView(name){state.view=name;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+name));document.querySelectorAll('#nav button').forEach(el=>el.classList.toggle('selected',el.dataset.view===name));window.scrollTo({top:0,behavior:'instant'})}
 function mode(m){state.mode=m;$('mode-blank').classList.toggle('active',m==='blank');$('mode-test').classList.toggle('active',m==='test');$('mode-note').textContent=m==='test'?'Cypress Bay · No preloaded data · Upload the fictional ZIP':'Blank workspace · No preloaded data';refresh()}
@@ -389,12 +395,12 @@ async function ingestFiles(input){
     catch(e){errors.push(file.name+': '+String(e?.message||e))}
   }else errors.push(file.name+': unsupported file format');
  }
- }finally{state.busy=false;refresh();$('process-note').textContent=errors.length?'Some files need attention: '+errors.slice(0,3).join('; '):state.docs.filter(d=>d.status==='parsed').length+' files extracted · Dashboards recalculated';
+ }finally{state.busy=false;refresh();$('process-note').textContent=errors.length?'Skipped/unsupported: '+errors.slice(0,3).join('; '):state.docs.filter(d=>d.status==='parsed').length+' successfully read · '+state.docs.filter(d=>d.status==='error').length+' failed · Financial reviews shown separately';
  if(errors.length)console.warn('PFI QA intake warnings:',errors)}
 }
 function exportData(){
  const m=state.model;if(!m||!m.docs.length)return;
- const data={application:'PFI Construction Intelligence',testMode:state.mode,classification:'SYNTHETIC QA · NOT APPROVED ACCOUNTING DATA',generatedAt:new Date().toISOString(),project:m.values.name||'Unnamed development',fields:m.values,fieldEvidence:Object.fromEntries(Object.entries(m.sources).map(([k,v])=>[k,{source:v.source,location:v.location,evidence:v.evidence,provisional:true}])),budget:{land:m.values.land,residential:m.values.residential,retail:m.values.retailcost,parking:m.values.parkingcost,indirect:m.values.indirect,total:m.cost},sales:{condominium:m.values.condosales,retail:m.values.retailsales,gross:m.gross,sellingExpenses:m.values.salesexpenses,net:m.net},preFinancingProfit:m.profit,approvedChangeCostScenarioNotPosted:m.approvedDelta,monthlyForecast:m.draws,unitSellout:m.sellout,diligenceRisks:m.risks,permitGates:m.permits,issues:m.issues,conflicts:m.conflicts,documents:m.docs.map(d=>({name:d.name,kind:d.kind,status:d.status,fields:d.fields?.length||0})),limitations:['No database persistence','No automatic accounting write-back','No independently certified PDF/OCR extraction','No GAAP/loan authorization','Financial outputs require review']};
+ const data={application:'PFI Construction Intelligence',testMode:state.mode,technicalUploadFailures:m.errors,duplicateFormats:m.duplicates.map(d=>d.name),classification:'SYNTHETIC QA · NOT APPROVED ACCOUNTING DATA',generatedAt:new Date().toISOString(),project:m.values.name||'Unnamed development',fields:m.values,fieldEvidence:Object.fromEntries(Object.entries(m.sources).map(([k,v])=>[k,{source:v.source,location:v.location,evidence:v.evidence,provisional:true}])),budget:{land:m.values.land,residential:m.values.residential,retail:m.values.retailcost,parking:m.values.parkingcost,indirect:m.values.indirect,total:m.cost},sales:{condominium:m.values.condosales,retail:m.values.retailsales,gross:m.gross,sellingExpenses:m.values.salesexpenses,net:m.net},preFinancingProfit:m.profit,approvedChangeCostScenarioNotPosted:m.approvedDelta,monthlyForecast:m.draws,unitSellout:m.sellout,diligenceRisks:m.risks,permitGates:m.permits,issues:m.issues,conflicts:m.conflicts,documents:m.docs.map(d=>({name:d.name,kind:d.kind,status:d.status,fields:d.fields?.length||0})),limitations:['No database persistence','No automatic accounting write-back','No independently certified PDF/OCR extraction','No GAAP/loan authorization','Financial outputs require review']};
  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='PFI-Development-Intelligence-Review.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
 function init(){
