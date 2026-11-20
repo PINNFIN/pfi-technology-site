@@ -383,6 +383,12 @@ function refresh(){
  $('status').textContent=state.busy?'PROCESSING':m.errors.length?m.errors.length+' FILE FAILURE(S)':m.docs.length?'MODEL POPULATED · REVIEW REQUIRED':'BLANK CANVAS';
  $('status').className='pill '+(m.errors.length?'red':m.docs.length?'orange':'');
  $('side-exceptions').textContent=m.issues.length+m.errors.length;$('btn-export').disabled=!m.docs.length;
+
+ if(!state.busy&&window.parent&&window.parent!==window){
+  const snapshot={values:m.values,sources:m.sources,cap:m.cap,draws:m.draws,documents:m.docs.length,issues:m.issues.length,finance:{cost:m.cost,gross:m.gross,net:m.net,profit:m.profit}};
+  window.parent.postMessage({type:'PFI_WORKSPACE_SNAPSHOT',snapshot},location.origin);
+ }
+
 }
 function showView(name){state.view=name;document.querySelectorAll('.view').forEach(el=>el.classList.toggle('active',el.id==='view-'+name));document.querySelectorAll('#nav button').forEach(el=>el.classList.toggle('selected',el.dataset.view===name));window.scrollTo({top:0,behavior:'instant'})}
 function mode(m){state.mode=m;$('mode-blank').classList.toggle('active',m==='blank');$('mode-test').classList.toggle('active',m==='test');$('mode-note').textContent=m==='test'?'Cypress Bay · No preloaded data · Upload the fictional ZIP':'Blank workspace · No preloaded data';refresh()}

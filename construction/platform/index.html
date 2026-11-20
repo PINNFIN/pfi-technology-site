@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PFI Development Intelligence | Command Center</title><style>*{box-sizing:border-box}body{margin:0;background:#edf3f7;font:13px Arial,sans-serif;color:#1b4261}header{background:#103e61;color:white;padding:14px 22px;display:flex;justify-content:space-between;gap:12px}header b{font-size:17px;letter-spacing:.5px}header small{display:block;color:#c2d7e6;margin-top:4px}nav{background:white;display:flex;align-items:center;gap:7px;padding:10px 18px;border-bottom:1px solid #c9dce8;flex-wrap:wrap}button{border:1px solid #c5dbe8;border-radius:6px;background:#e6f0f6;padding:9px 13px;color:#1d4d6c;font-weight:bold;cursor:pointer}button.on{color:white;background:#145d84}a{margin-left:auto;color:#155e87}iframe{border:0;width:100%;height:calc(100vh - 119px);background:#f0f6fa;display:block}@media(max-width:780px){iframe{height:calc(100vh - 170px)}a{margin-left:0}}</style></head><body><header><div><b>PFI DEVELOPMENT INTELLIGENCE</b><small>Construction Job Controls · Land Feasibility · Development Forecast · CRE Underwriting</small></div><small>Unified Preview v1.0 · Original Platform + Document Intelligence</small></header><nav><button id="construction" class="on" onclick="pick('construction')">Construction Job Controls</button><button id="land" onclick="pick('land')">Land / Highest & Best Use</button><button id="development" onclick="pick('development')">Condo Development / Due Diligence</button><button id="cre" onclick="pick('cre')">10-Year CRE / LP-GP</button><button id="documents" onclick="pick('documents')">Document Intake & CFO Dashboards</button><a target="_blank" rel="noopener" href="./construction.html" id="full">Open Full Screen</a></nav><iframe id="pane" src="./construction.html" title="PFI Financial Command Center"></iframe><script>function pick(x){const urls={construction:'./construction.html',land:'./site.html',development:'./development.html',cre:'./cre.html',documents:'../workspace/'};document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.id===x));document.getElementById('pane').src=urls[x];document.getElementById('full').href=urls[x];location.hash=x}if(['construction','land','development','cre','documents'].includes(location.hash.slice(1)))pick(location.hash.slice(1))</script><div id="unifiedStatus" style="position:fixed;right:15px;bottom:10px;color:#294e67;background:#e3f2fa;border:1px solid #b9d5e5;padding:6px 12px;border-radius:12px;font-size:11px">Historical scenario · Upload documents to activate</div>
+<script>
+(function(){
+ let lastSnapshot=null;
+ const pane=document.getElementById('pane');
+ function sendToDevelopment(){
+  if(!lastSnapshot||!pane.contentWindow)return;
+  if(pane.getAttribute('src')?.includes('development.html')){
+   pane.contentWindow.postMessage({type:'PFI_APPLY_DOCUMENT_MODEL',snapshot:lastSnapshot},location.origin);
+  }
+ }
+ pane.addEventListener('load',sendToDevelopment);
+ window.addEventListener('message',function(e){
+   if(e.origin!==location.origin||e.source!==pane.contentWindow||!e.data)return;
+   if(e.data.type==='PFI_WORKSPACE_SNAPSHOT'){
+     lastSnapshot=e.data.snapshot;
+     try{sessionStorage.setItem('pfi-unified-model-v1',JSON.stringify(lastSnapshot))}catch(err){}
+     let indicator=document.getElementById('unifiedStatus');
+     if(indicator){indicator.textContent=lastSnapshot?.documents?lastSnapshot.documents+' documents · modeled CFO data ready':'No source data uploaded'}
+   }
+   if(e.data.type==='PFI_DEV_MODEL_READY')sendToDevelopment();
+ });
+ try{lastSnapshot=JSON.parse(sessionStorage.getItem('pfi-unified-model-v1')||'null')}catch(e){}
+})();
+</script>
+</body></html>
