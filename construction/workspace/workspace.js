@@ -561,14 +561,21 @@ function exportData(){
  const data={application:'PFI Construction Intelligence',testMode:state.mode,technicalUploadFailures:m.errors,duplicateFormats:m.duplicates.map(d=>d.name),classification:'SYNTHETIC QA · NOT APPROVED ACCOUNTING DATA',generatedAt:new Date().toISOString(),project:m.values.name||'Unnamed development',fields:m.values,fieldEvidence:Object.fromEntries(Object.entries(m.sources).map(([k,v])=>[k,{source:v.source,location:v.location,evidence:v.evidence,provisional:true}])),budget:{land:m.values.land,residential:m.values.residential,retail:m.values.retailcost,parking:m.values.parkingcost,indirect:m.values.indirect,total:m.cost},sales:{condominium:m.values.condosales,retail:m.values.retailsales,gross:m.gross,sellingExpenses:m.values.salesexpenses,net:m.net},preFinancingProfit:m.profit,approvedChangeCostScenarioNotPosted:m.approvedDelta,monthlyForecast:m.draws,unitSellout:m.sellout,diligenceRisks:m.risks,permitGates:m.permits,issues:m.issues,conflicts:m.conflicts,documents:m.docs.map(d=>({name:d.name,kind:d.kind,status:d.status,fields:d.fields?.length||0})),limitations:['No database persistence','No automatic accounting write-back','No independently certified PDF/OCR extraction','No GAAP/loan authorization','Financial outputs require review']};
  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='PFI-Development-Intelligence-Review.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
+function clearWorkspaceState(){
+ state.docs=[];state.mode='blank';state.next=1;state.busy=false;
+ const pick=$('file-input');if(pick)pick.value='';
+ try{localStorage.setItem('pfi-unified-cleared-v1','1')}catch(e){}
+ mode('blank');showView('overview');
+}
 function init(){
+ window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===window.parent&&event.data?.type==='PFI_CLEAR_UPLOADS')clearWorkspaceState()});
  document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.go)));
  // Dynamic empty view links use event delegation.
  document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)showView(b.dataset.go)});
  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
  $('mode-blank').onclick=()=>mode('blank');$('mode-test').onclick=()=>mode('test');
  $('btn-export').onclick=exportData;$('exceptions-export').onclick=exportData;
- $('btn-reset').onclick=()=>{if(!state.docs.length)return;if(!confirm('Clear all uploaded documents, model values and review flags?'))return;state.docs=[];state.mode='blank';mode('blank');showView('overview')};
+ $('btn-reset').onclick=()=>{if(!confirm('Reset the entire PFI workspace? Clear uploaded files, financial results and saved sample data from all five sections?'))return;clearWorkspaceState();if(window.parent&&window.parent!==window)window.parent.postMessage({type:'PFI_RESET_ALL'},location.origin);};
  $('clear-files').onclick=()=>{if(!state.docs.length)return;if(!confirm('Remove every uploaded file and clear its model contributions?'))return;state.docs=[];refresh()};
  const zone=$('drop-area'),pick=$('file-input');
  $('pick-files').addEventListener('click',e=>{e.stopPropagation();pick.click()});
