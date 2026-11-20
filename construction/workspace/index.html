@@ -10,7 +10,7 @@
 <script defer src="/assets/vendor/pdf.min.js"></script>
 <script defer src="/assets/vendor/xlsx.full.min.js"></script>
 <script defer src="/assets/vendor/jszip.min.js"></script>
-<script defer src="./workspace.js?v=unified-original-v1"></script>
+<script defer src="./workspace.js?v=source-routing-v2"></script>
 </head>
 <body>
 <div class="app">
@@ -20,6 +20,7 @@
   <nav aria-label="Workspace views" id="nav">
     <button data-view="overview" class="selected">◫ <span>Executive Dashboard</span></button>
     <button data-view="documents">⇧ <span>Document Intake</span><span class="navcount" id="side-files">0</span></button>
+    <button data-view="routing">☷ <span>Document Routing & Review</span><span class="navcount" id="side-routing">0</span></button>
     <button data-view="budget">▥ <span>Development Budget</span></button>
     <button data-view="capital">◇ <span>Capital & Construction</span></button>
     <button data-view="cashflow">▤ <span>36-Month Cash Flow</span></button>
@@ -62,7 +63,7 @@
    <article class="panel"><div class="panel-header"><div><h2>Cash flow preview</h2><p>Monthly development spend and sale closings</p></div></div><div id="overview-chart" class="chart-holder"></div></article>
   </div>
  </div>
-</section>
+<div id="evidence-overview"></div></section>
 <section class="view" id="view-documents">
  <div class="page-heading"><div><div class="eyebrow">UNIVERSAL DOCUMENT INTAKE</div><h1>Upload & Extract</h1><p>Choose individual documents or the ZIP package containing all fictional source files. Each upload immediately refreshes the dashboard.</p></div><button class="btn light" data-go="overview">View Financial Dashboard →</button></div>
  <div class="mode-switch" role="group" aria-label="Project mode"><button class="active" id="mode-blank">＋ Blank Project</button><button id="mode-test">◇ Fictional Deal Test</button><span id="mode-note">Blank workspace · No preloaded data</span></div>
@@ -83,12 +84,19 @@
  </div>
  <article class="panel" style="margin-top:18px"><div class="panel-header"><div><h2>Extracted financial assumptions</h2><p>Current modeled values, supporting sources, and excluded conflicts</p></div></div><div id="assumptions-table"></div></article>
 </section>
-<section class="view" id="view-budget"><div class="page-heading"><div><div class="eyebrow">COST INTELLIGENCE</div><h1>Development Budget</h1><p>Base development uses, cost composition, and approved-change review.</p></div></div><div id="budget-content"></div></section>
-<section class="view" id="view-capital"><div class="page-heading"><div><div class="eyebrow">CONSTRUCTION FINANCE</div><h1>Capital & Construction</h1><p>Loan assumptions, contract payments, commitments and change-order controls.</p></div></div><div id="capital-content"></div></section>
-<section class="view" id="view-cashflow"><div class="page-heading"><div><div class="eyebrow">DEVELOPMENT TIMELINE</div><h1>36-Month Cash Flow</h1><p>Scheduled development costs, illustrative loan draws and sale proceeds.</p></div></div><div id="cashflow-content"></div></section>
-<section class="view" id="view-sellout"><div class="page-heading"><div><div class="eyebrow">REVENUE INTELLIGENCE</div><h1>Unit Sellout</h1><p>Unit-by-unit pricing, closing assumptions and condominium revenue reconciliation.</p></div></div><div id="sellout-content"></div></section>
-<section class="view" id="view-diligence"><div class="page-heading"><div><div class="eyebrow">RISK & COMPLIANCE</div><h1>Due Diligence</h1><p>Source-supported permit gates and outstanding risks; no unsupported approvals inferred.</p></div></div><div id="diligence-content"></div></section>
-<section class="view" id="view-exceptions"><div class="page-heading"><div><div class="eyebrow">FINANCIAL CONTROL CENTER</div><h1>Financial Reviews & Upload Failures</h1><p>Technical file errors are separated from expected budget, contract, and approval review items.</p></div><button class="btn light" id="exceptions-export">Export Evidence</button></div><div id="exceptions-content"></div></section>
+<section class="view" id="view-routing">
+ <div class="page-heading"><div><div class="eyebrow">SOURCE-TO-MODULE AUDIT REGISTER</div><h1>Document Routing & Review</h1><p>Trace every uploaded document into its assigned module. Distinguish extracted values from evidence awaiting financial, legal, engineering or lender review.</p></div><button class="btn light" data-go="documents">Back to Document Intake</button></div>
+ <article class="panel"><div class="panel-header"><div><h2>Routing health & file reconciliation</h2><p>24 logical documents in the fictional package; 27 physical files because 01, 07 and 08 have PDF and Word copies.</p></div><span class="pill blue" id="route-count">0</span></div>
+ <div id="route-stats" class="scoreline" style="flex-wrap:wrap"></div><div class="warn">A successfully read document is not necessarily used in a financial calculation. Excluded revisions, unsigned lender agreements and unapproved payments remain outside the base figures. Original Contractor Job Controls and 10-Year CRE/LP-GP are independent historical scenarios; document evidence is not silently posted to them.</div>
+ <p id="routing-note" class="muted" style="margin-top:13px">Upload files to see their destinations.</p></article>
+ <article class="panel" style="margin-top:18px"><div class="panel-header"><div><h2>Complete uploaded-document register</h2><p>Click a destination to open its review module; expand the source excerpt for evidence.</p></div></div><div id="routing-table"></div></article>
+ </section>
+ <section class="view" id="view-budget"><div class="page-heading"><div><div class="eyebrow">COST INTELLIGENCE</div><h1>Development Budget</h1><p>Base development uses, cost composition, and approved-change review.</p></div></div><div id="budget-content"></div><div id="evidence-budget"></div></section>
+<section class="view" id="view-capital"><div class="page-heading"><div><div class="eyebrow">CONSTRUCTION FINANCE</div><h1>Capital & Construction</h1><p>Loan assumptions, contract payments, commitments and change-order controls.</p></div></div><div id="capital-content"></div><div id="evidence-capital"></div></section>
+<section class="view" id="view-cashflow"><div class="page-heading"><div><div class="eyebrow">DEVELOPMENT TIMELINE</div><h1>36-Month Cash Flow</h1><p>Scheduled development costs, illustrative loan draws and sale proceeds.</p></div></div><div id="cashflow-content"></div><div id="evidence-cashflow"></div></section>
+<section class="view" id="view-sellout"><div class="page-heading"><div><div class="eyebrow">REVENUE INTELLIGENCE</div><h1>Unit Sellout</h1><p>Unit-by-unit pricing, closing assumptions and condominium revenue reconciliation.</p></div></div><div id="sellout-content"></div><div id="evidence-sellout"></div></section>
+<section class="view" id="view-diligence"><div class="page-heading"><div><div class="eyebrow">RISK & COMPLIANCE</div><h1>Due Diligence</h1><p>Source-supported permit gates and outstanding risks; no unsupported approvals inferred.</p></div></div><div id="diligence-content"></div><div id="evidence-diligence"></div></section>
+<section class="view" id="view-exceptions"><div class="page-heading"><div><div class="eyebrow">FINANCIAL CONTROL CENTER</div><h1>Financial Reviews & Upload Failures</h1><p>Technical file errors are separated from expected budget, contract, and approval review items.</p></div><button class="btn light" id="exceptions-export">Export Evidence</button></div><div id="exceptions-content"></div><div id="evidence-exceptions"></div></section>
 <footer>© PFI Technologies · Synthetic development-document validation · Not a certified accounting system, lender approval, or investment recommendation.</footer>
 </div></div></div>
 </body></html>

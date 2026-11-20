@@ -183,6 +183,107 @@ function docRisks(doc){
 }
 function getRow(sheets,possible){for(const [name,rows] of Object.entries(sheets)){if(possible.some(rx=>rx.test(name)))return rows}return []}
 function rowNum(row,i){return nval(row?.[i])}
+function routeInfo(doc,m){
+ // Routes are review assignments, not accounting postings or investment approvals.
+ const kinds={
+  'INVESTMENT MEMO':['overview','budget','capital','sellout'],
+  'MASTER UNDERWRITING':['overview','budget','capital','cashflow','sellout','diligence'],
+  'DEVELOPMENT BUDGET':['budget','overview','capital'],
+  'LENDER TERMS':['capital','cashflow','exceptions'],
+  'PROJECT SCHEDULE':['cashflow','diligence'],
+  'CONSTRUCTION BILLING':['capital','exceptions'],
+  'DUE DILIGENCE':['diligence','exceptions'],
+  'APPROVED CHANGE ORDER':['capital','budget','exceptions'],
+  'PENDING / UNVERIFIED CHANGE':['capital','budget','exceptions'],
+  'RENT ROLL / SEPARATE USE':['exceptions'],
+  'REVISED / UNAPPROVED':['exceptions','budget'],
+  'ACQUISITION / CONTRACT':['budget','diligence'],
+  'CONSTRUCTION CONTRACT':['capital','budget'],
+  'SALES / CLOSING':['sellout','diligence'],
+  'MARKET STUDY':['sellout','overview'],
+  'EQUITY / INVESTOR':['capital','exceptions'],
+  'UNIT SELLOUT':['sellout'],
+  'GENERAL DEVELOPMENT DOCUMENT':['overview','exceptions']
+ };
+ let routes=(kinds[doc.kind]||['exceptions']).slice();
+ const count={
+  fieldValues:Object.entries(m.sources||{}).filter(([k,src])=>src.source===doc.name).length,
+  drawMonths:m.draws.length&&doc.draws?.length&&doc.draws===m.draws?m.draws.length:0,
+  selloutUnits:m.sellout.length&&doc.sellout?.length&&doc.sellout===m.sellout?m.sellout.length:0,
+  commitments:doc.commitments?.length||0,
+  diligence:((doc.permits?.length||0)+(doc.risks?.length||0)),
+  activities:doc.scheduleActivities?.length||0,
+  invoices:doc.invoiceDisputes?.length||0,
+  changeOrders:doc.change&&m.changes.some(c=>c.source===doc.name)?1:0,
+  payments:doc.payment&&m.payments.some(c=>c.source===doc.name)&&Object.entries(doc.payment).some(([k,v])=>k!=='label'&&typeof v==='number')?1:0
+ };
+ let isDuplicate=m.duplicates.some(x=>x.id===doc.id);
+ let excluded=['REVISED / UNAPPROVED','PENDING / UNVERIFIED CHANGE','RENT ROLL / SEPARATE USE'].includes(doc.kind);
+ let counts=Object.values(count).reduce((a,b)=>a+b,0);
+ let routeStatus=isDuplicate?'DUPLICATE FORMAT':excluded?'EXCLUDED / REVIEW':counts?'MODEL + REVIEW':'REVIEW ONLY';
+ let explanation=isDuplicate?'Alternate PDF / Word copy. Source retained; duplicate monetary entries not counted twice.'
+  :excluded?'Excluded from base financial figures; inspect the exception before approving any change.'
+  :counts?'Relevant structured evidence was routed to model/review panels. Other terms in this file still require review.'
+  :'The file parsed successfully and is assigned for document review. Its substantive terms have not been validated or posted.';
+ if(doc.kind==='RENT ROLL / SEPARATE USE')explanation='Separate rental rent roll; must not be confused with the 96-unit condominium sellout. CRE model is independent and is not auto-populated.';
+ if(doc.kind==='LENDER TERMS')explanation='Indicative lender terms extracted as review evidence; no binding loan, debt approval or interest posting.';
+ if(doc.kind==='PROJECT SCHEDULE')explanation='Dated construction activities routed to schedule review. Source-provided 36-month cash flow comes from the integrated workbook.';
+ if(doc.kind==='INVESTMENT MEMO')explanation='Investment assumptions and narrative for underwriting review; duplicate Word/PDF copies do not create two transactions.';
+ if(doc.kind==='GENERAL DEVELOPMENT DOCUMENT')explanation='Nested assumptions recognized only where direct labels match. Unmapped JSON keys remain for human review.';
+ if(doc.kind==='CONSTRUCTION BILLING')explanation='Contractor invoice/pay-application evidence queued for construction review; not an approved payable.';
+ if(doc.kind==='SALES / CLOSING')explanation='Presale and closing contract terms assigned to sellout review; no executed sale or cash receipt is inferred.';
+ return {routes,status:routeStatus,explanation,counts};
+}
+const routeLabels={overview:'Executive Dashboard',documents:'Document Intake',routing:'Document Routing & Review',budget:'Development Budget',capital:'Capital & Construction',cashflow:'36-Month Cash Flow',sellout:'Unit Sellout',diligence:'Due Diligence',exceptions:'Exceptions & Controls'};
+function routeBadge(r){return r.status==='MODEL + REVIEW'?'green':r.status==='REVIEW ONLY'?'':'critical'}
+function renderRouting(m){
+ const parsed=m.docs,failed=state.docs.filter(d=>d.status==='error');
+ const unique=new Set(parsed.map(d=>d.name.replace(/\.(pdf|docx)$/i,'').replace(/^(\d+)_.*$/,'$1'))).size;
+ let statuses={};for(const doc of parsed){const r=routeInfo(doc,m);statuses[r.status]=(statuses[r.status]||0)+1}
+ const tag=(label,n)=>'<span class="tag">'+renderEsc(label)+' '+integer(n)+'</span>';
+ $('route-stats').innerHTML=tag('Logical documents',unique)+tag('Files parsed',parsed.length)+tag('Mapped + review',statuses['MODEL + REVIEW']||0)+tag('Review only',statuses['REVIEW ONLY']||0)+tag('Excluded',statuses['EXCLUDED / REVIEW']||0)+tag('Alternate formats',statuses['DUPLICATE FORMAT']||0)+tag('File failures',failed.length);
+ $('route-count').textContent=parsed.length;
+ let rows=state.docs.map(doc=>{
+  if(doc.status==='error')return '<tr><td><strong>'+renderEsc(doc.name)+'</strong></td><td>Parser failed</td><td><span class="flag critical">UPLOAD FAILED</span></td><td>'+renderEsc(doc.error||'Unknown error')+'</td><td><button type="button" class="btn light" data-routing-go="exceptions">Inspect</button></td></tr>';
+  if(doc.status!=='parsed')return '<tr><td>'+renderEsc(doc.name)+'</td><td>Processing</td><td>Pending</td><td>—</td><td>—</td></tr>';
+  const info=routeInfo(doc,m);
+  let infoText=Object.entries(info.counts).filter(([k,v])=>v).map(([k,v])=>k.replace(/([A-Z])/g,' $1')+': '+v).join(' · ');
+  let evidence=[...(doc.lines||[])].filter(x=>x.trim()).slice(0,22).join('\n').slice(0,3000);
+  let chosen=Object.entries(m.sources).filter(([k,src])=>src.source===doc.name).map(([k])=>fields[k]?.label||k);
+  let secondary=doc.fields?.length?' · '+doc.fields.length+' candidate values':'';
+  return '<tr><td><strong>'+renderEsc(doc.name)+'</strong><span class="source">'+renderEsc(doc.kind)+secondary+'</span></td>'+
+   '<td>'+info.routes.map(v=>'<button type="button" class="route-chip" data-routing-go="'+renderEsc(v)+'">'+renderEsc(routeLabels[v])+'</button>').join('')+'</td>'+
+   '<td><span class="flag '+routeBadge(info)+'">'+renderEsc(info.status)+'</span></td>'+
+   '<td><div>'+renderEsc(info.explanation)+'</div><span class="source">'+renderEsc(infoText||'No structured numeric data posted')+'</span>'+
+   (chosen.length?'<span class="source">Model inputs: '+renderEsc(chosen.join(', '))+'</span>':'')+
+   '<details class="source-detail"><summary>Inspect extracted document text</summary><pre class="detail">'+renderEsc(evidence)+'</pre></details></td>'+
+   '<td><button type="button" class="btn light" data-routing-go="'+renderEsc(info.routes[0]||'exceptions')+'">Review →</button></td></tr>';
+ });
+ $('routing-table').innerHTML='<div class="table-wrap"><table class="data-table"><thead><tr><th>Uploaded source</th><th>Module destinations</th><th>Processing status</th><th>Evidence & controls</th><th>Open review</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
+ wireRouteButtons($('routing-table'));
+ const unresolved=parsed.filter(d=>['REVIEW ONLY','EXCLUDED / REVIEW','DUPLICATE FORMAT'].includes(routeInfo(d,m).status));
+ $('routing-note').textContent=parsed.length+' parsed files are assigned to review destinations. '+unresolved.length+' are review-only, excluded or alternate-format copies; no legal, loan, permit or payment approval is inferred.';
+}
+function wireRouteButtons(el){
+ el.querySelectorAll('[data-routing-go]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.routingGo)));
+}
+function moduleEvidence(m,module){
+ const matches=m.docs.filter(d=>routeInfo(d,m).routes.includes(module));
+ const body=matches.map(d=>{
+  let r=routeInfo(d,m),x=(d.lines||[]).filter(Boolean).slice(0,7).join('\n').slice(0,1100);
+  return '<article class="evidence-item"><div><strong>'+renderEsc(d.name)+'</strong><div class="source">'+renderEsc(d.kind)+'</div></div><span class="flag '+routeBadge(r)+'">'+renderEsc(r.status)+'</span><p>'+renderEsc(r.explanation)+'</p><details><summary>See source excerpt</summary><pre class="detail">'+renderEsc(x)+'</pre></details></article>';
+ }).join('');
+ return '<article class="panel module-evidence"><div class="panel-header"><div><h2>Source documents assigned for '+renderEsc(routeLabels[module]||module)+' review</h2><p>Routing is visible for every uploaded file; assigned evidence is not an approved transaction.</p></div><span class="pill">'+matches.length+' FILES</span></div>'+
+ (body||'<div class="empty-small">No documents have been assigned to this module yet.</div>')+
+ '<div class="actions-bar"><button class="btn light" data-routing-go="routing">View all document destinations →</button></div></article>';
+}
+function renderModuleEvidence(m){
+ for(const id of ['overview','budget','capital','cashflow','sellout','diligence','exceptions']){
+  const target=$('evidence-'+id);
+  if(target){target.innerHTML=m.docs.length?moduleEvidence(m,id):'';wireRouteButtons(target)}
+ }
+}
+
 function tabular(doc){
  const s=doc.sheets||{},capital=getRow(s,[/capital.stack/i]),draws=getRow(s,[/monthly.draw/i,/construction.schedule/i,/draw.plan/i]),sell=getRow(s,[/unit.sellout/i]),permit=getRow(s,[/permit.gates/i]),risk=getRow(s,[/risk.register/i]),commit=getRow(s,[/commitment/i]);
  doc.capital={};for(const row of capital.slice(1)){const label=String(row[0]||'').toLowerCase().trim(),n=nval(row[1]);if(n!==null&&label)doc.capital[label]=n}
@@ -191,6 +292,12 @@ function tabular(doc){
  doc.permits=permit.slice(1).filter(r=>r[0]).map(r=>({name:String(r[0]),due:String(r[1]||''),status:String(r[2]||''),impact:String(r[5]||'')})).slice(0,200);
  doc.risks=risk.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),name:String(r[1]||''),severity:String(r[2]||''),status:String(r[3]||''),impact:String(r[5]||'')})).slice(0,200);
  doc.commitments=commit.slice(1).filter(r=>r[0]).map(r=>({code:String(r[0]),budget:rowNum(r,1),committed:rowNum(r,2),invoiced:rowNum(r,3),remaining:rowNum(r,4)})).slice(0,200);
+ const sched=getRow(s,[/^MILESTONES$/i,/activity.schedule/i,/activity.timeline/i,/construction.schedule/i,/development.timeline/i,/schedule/i]);
+ doc.scheduleActivities=sched.slice(1).filter(r=>r[0]&&/^\d{4}-\d\d/.test(String(r[1]||''))&&/^\d{4}-\d\d/.test(String(r[2]||''))).map(r=>({task:String(r[0]),start:String(r[1]),end:String(r[2]),workstream:String(r[3]||''),amount:rowNum(r,4),status:String(r[5]||'')})).slice(0,150);
+ doc.invoiceDisputes=[];
+ const inv=getRow(s,[/invoice/i,/dispute/i,/accounts.payable/i,/(?:^CSV$|^Sheet1$)/i]);
+ if(inv.length && doc.kind==='CONSTRUCTION BILLING')doc.invoiceDisputes=inv.slice(1).filter(r=>r[0]&&r[2]).map(r=>({id:String(r[0]),trade:String(r[1]||''),vendor:String(r[2]||''),invoice:rowNum(r,3),po:rowNum(r,4),approval:String(r[5]||''),status:String(r[6]||'')})).slice(0,150);
+
 }
 function labelAmount(text,labels){for(const label of labels){let line=text.split(/\r?\n/).find(s=>new RegExp('^\\s*'+label+'\\s*:', 'i').test(s));if(line){const m=line.match(/\$\s*([\d,]+(?:\.\d+)?)/)||line.match(/:\s*([\d,]+(?:\.\d+)?)/);if(m)return nval(m[1])}}
  return null}
@@ -244,6 +351,8 @@ function derive(){
  const canonicalCap=docs.filter(d=>Object.keys(d.capital||{}).length).sort((a,b)=>b.fields.length-a.fields.length)[0];
  const canonicalDraw=docs.filter(d=>(d.draws||[]).length).sort((a,b)=>b.draws.length-a.draws.length)[0];
  const canonicalSell=docs.filter(d=>(d.sellout||[]).length).sort((a,b)=>b.sellout.length-a.sellout.length)[0];
+ const scheduleActivities=docs.flatMap(d=>(d.scheduleActivities||[]).map(x=>({...x,source:d.name})));
+ const invoiceDisputes=docs.flatMap(d=>(d.invoiceDisputes||[]).map(x=>({...x,source:d.name})));
  const permits=docs.flatMap(d=>(d.permits||[]).map(x=>({...x,source:d.name})));
  const risks=docs.flatMap(d=>(d.risks||[]).map(x=>({...x,source:d.name})));
  const commitments=docs.flatMap(d=>(d.commitments||[]).map(x=>({...x,source:d.name})));
@@ -281,7 +390,7 @@ function derive(){
  if(docs.length&&!sellout.length)issues.push({level:'medium',title:'Unit sellout schedule not available',detail:'Upload a unit-by-unit pricing schedule. The platform will not infer unit values from gross sales alone.',source:'Sales schedule'});
  if(risks.length){const critical=risks.filter(r=>/critical/i.test(r.severity)&&!/^closed|resolved|approved$/i.test(r.status));if(critical.length)issues.push({level:'high',title:critical.length+' critical diligence items remain open',detail:'Permits, lender conditions and construction approvals remain unverified.',source:critical.slice(0,3).map(r=>r.id).join(', ')})}
  const duplicates=docs.filter(d=>docs.some(other=>other.id!==d.id&&other.name.replace(/\.(docx|pdf)$/i,'')===d.name.replace(/\.(docx|pdf)$/i,'')&&/\.docx$/i.test(d.name)&&/\.pdf$/i.test(other.name)));
- const m={docs,candidates,values,sources,conflicts,issues,errors,duplicates,missing,cost,gross,net,profit,cap,draws,sellout,permits,risks,commitments,changes,payments,lender,approvedDelta,approvedChanges,pendingChanges};
+ const m={docs,candidates,values,sources,conflicts,issues,errors,duplicates,missing,cost,gross,net,profit,cap,draws,sellout,permits,risks,commitments,scheduleActivities,invoiceDisputes,changes,payments,lender,approvedDelta,approvedChanges,pendingChanges};
  state.model=m;return m;
 }
 function viewEmpty(message){return '<div class="empty-view"><div style="font-size:36px;color:#4191c0">◇</div><h2>Nothing to calculate yet</h2><p>'+renderEsc(message||'Upload source deal documents to begin populating this view.')+'</p><button class="btn primary" data-go="documents">Upload documents →</button></div>'}
@@ -342,14 +451,27 @@ function renderCapital(m){if(!m.docs.length){$('capital-content').innerHTML=view
  '<div class="warn">Debt figures are informational assumptions, not funded amounts. No bank approval, interest calculation, construction draw entitlement, or accounting journal has been created.</div>'+
  '<div class="grid equal"><article class="panel"><div class="panel-header"><div><h2>Change-order cost controls</h2><p>Approved costs shown separately from pending scope</p></div></div>'+(changeRows?'<div class="table-wrap"><table class="data-table"><thead><tr><th>CO</th><th>Status</th><th class="num">Cost</th><th class="num">Contract addition</th><th>Source</th></tr></thead><tbody>'+changeRows+'</tbody></table></div>':'<div class="empty-small">No change orders parsed yet.</div>')+'</article>'+
  '<article class="panel"><div class="panel-header"><div><h2>Contractor billing</h2><p>Requested applications—not certified payments</p></div></div>'+(payRows?'<div class="table-wrap"><table class="data-table"><thead><tr><th>Source</th><th class="num">Completed</th><th class="num">Retainage</th><th class="num">Prior certified</th><th class="num">Request</th><th>Review</th></tr></thead><tbody>'+payRows+'</tbody></table></div>':'<div class="empty-small">No pay applications parsed yet.</div>')+'</article></div>'+
- '<article class="panel"><div class="panel-header"><div><h2>Trade commitments and cost-to-complete</h2><p>Workbook-supplied cost codes and invoice balances</p></div></div>'+(commitRows?'<div class="table-wrap"><table class="data-table"><thead><tr><th>Trade</th><th class="num">Budget</th><th class="num">Committed</th><th class="num">Invoiced</th><th class="num">Remaining forecast</th><th>Source</th></tr></thead><tbody>'+commitRows+'</tbody></table></div>':'<div class="empty-small">Upload a commitments workbook with cost codes and amounts.</div>')+'</article>';
+ '<article class="panel"><div class="panel-header"><div><h2>Trade commitments and cost-to-complete</h2><p>Workbook-supplied cost codes and invoice balances</p></div></div>'+(commitRows?'<div class="table-wrap"><table class="data-table"><thead><tr><th>Trade</th><th class="num">Budget</th><th class="num">Committed</th><th class="num">Invoiced</th><th class="num">Remaining forecast</th><th>Source</th></tr></thead><tbody>'+commitRows+'</tbody></table></div>':'<div class="empty-small">Upload a commitments workbook with cost codes and amounts.</div>')+'</article>'+renderInvoiceReview(m);
 }
-function renderCashflow(m){if(!m.draws.length){$('cashflow-content').innerHTML=viewEmpty('Upload a workbook containing dated monthly draws or a construction spending schedule.');return}
+function renderInvoiceReview(m){
+ if(!m.invoiceDisputes.length)return '';
+ let rows=m.invoiceDisputes.map(x=>'<tr><td><strong>'+renderEsc(x.id)+'</strong></td><td>'+renderEsc(x.vendor)+'</td><td>'+renderEsc(x.trade)+'</td><td class="num">'+money(x.invoice)+'</td><td class="num">'+money(x.po)+'</td><td>'+renderEsc(x.approval||x.status||'REVIEW')+'</td><td>'+renderEsc(x.source)+'</td></tr>').join('');
+ return '<article class="panel" style="margin-top:17px"><div class="panel-header"><div><h2>Invoice exception & approval review</h2><p>Review invoiced values against purchase order values; no payment or payable is created.</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Invoice</th><th>Vendor</th><th>Trade</th><th class="num">Invoiced</th><th class="num">PO</th><th>Approval / Status</th><th>Source</th></tr></thead><tbody>'+rows+'</tbody></table></div></article>';
+}
+function renderCashflow(m){if(!m.draws.length&&!m.scheduleActivities.length){$('cashflow-content').innerHTML=viewEmpty('Upload a workbook containing dated monthly draws or a construction spending schedule.');return}
+ if(!m.draws.length&&m.scheduleActivities.length){
+ $('cashflow-content').innerHTML=renderScheduleActivities(m)+'<div class="note">No monthly cash-flow values provided; activities alone do not establish actual spending or financing draw amounts.</div>';return;
+ }
  const d=m.draws,spend=d.reduce((a,x)=>a+x.cost,0),loan=d.reduce((a,x)=>a+x.loan,0),sales=d.reduce((a,x)=>a+x.sales,0);
  const rows=d.map((x,i)=>'<tr><td><strong>'+renderEsc(x.month)+'</strong></td><td class="num">'+money(x.cost)+'</td><td class="num">'+money(x.loan)+'</td><td class="num">'+money(x.interest)+'</td><td class="num">'+money(x.sales)+'</td><td class="num">'+money(x.sales+x.loan-x.cost)+'</td></tr>').join('');
  $('cashflow-content').innerHTML='<div class="metrics"><article class="metric"><span>Scheduled base spending</span><strong>'+compact(spend)+'</strong><small>'+d.length+' forecast periods</small></article><article class="metric"><span>Illustrative total loan draws</span><strong>'+compact(loan)+'</strong><small>Subject to lender eligibility</small></article><article class="metric"><span>Scheduled closing receipts</span><strong>'+compact(sales)+'</strong><small>Sales assumptions, not executed contracts</small></article><article class="metric accent"><span>Budget vs scheduled spend</span><strong>'+compact(m.cost!==null?spend-m.cost:null)+'</strong><small>Should equal zero</small></article></div>'+
  '<article class="panel"><div class="panel-header"><div><h2>Development cash flow · '+d.length+' months</h2><p>Source-supplied values; financing interest may be incomplete</p></div></div>'+chart(d)+'</article>'+
- '<article class="panel" style="margin-top:17px"><div class="panel-header"><div><h2>Monthly cash schedule</h2><p>Positive monthly net is illustrative and excludes undisclosed financing fees</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Period</th><th class="num">Scheduled costs</th><th class="num">Loan draws</th><th class="num">Interest estimate</th><th class="num">Closing receipts</th><th class="num">Net pre-interest</th></tr></thead><tbody>'+rows+'</tbody></table></div></article>';
+ '<article class="panel" style="margin-top:17px"><div class="panel-header"><div><h2>Monthly cash schedule</h2><p>Positive monthly net is illustrative and excludes undisclosed financing fees</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Period</th><th class="num">Scheduled costs</th><th class="num">Loan draws</th><th class="num">Interest estimate</th><th class="num">Closing receipts</th><th class="num">Net pre-interest</th></tr></thead><tbody>'+rows+'</tbody></table></div></article>'+renderScheduleActivities(m);
+}
+function renderScheduleActivities(m){
+ if(!m.scheduleActivities.length)return '';
+ const rows=m.scheduleActivities.map(a=>'<tr><td><strong>'+renderEsc(a.task)+'</strong></td><td>'+renderEsc(a.start)+'</td><td>'+renderEsc(a.end)+'</td><td>'+renderEsc(a.workstream)+'</td><td class="num">'+money(a.amount)+'</td><td>'+renderEsc(a.status)+'</td><td>'+renderEsc(a.source)+'</td></tr>').join('');
+ return '<article class="panel" style="margin-top:17px"><div class="panel-header"><div><h2>Construction activities requiring schedule review</h2><p>'+m.scheduleActivities.length+' dated source activities. These do not automatically replace the original 48-month illustrative development timetable.</p></div></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Activity</th><th>Start</th><th>Finish</th><th>Workstream</th><th class="num">Budget</th><th>Status</th><th>Source</th></tr></thead><tbody>'+rows+'</tbody></table></div></article>';
 }
 function renderSellout(m){if(!m.sellout.length){$('sellout-content').innerHTML=viewEmpty('Upload the unit sellout workbook. Rental rent rolls are kept separate from condominium sale assumptions.');return}
  const units=m.sellout,unitTotal=units.reduce((a,x)=>a+(x.price||0),0),matched=Number.isFinite(m.values.condosales)?unitTotal-m.values.condosales:null;
@@ -378,14 +500,15 @@ function renderExceptions(m){if(!m.docs.length&&!m.errors.length){$('exceptions-
  '<article class="panel"><div class="panel-header"><div><h2>Document-level review alerts</h2><p>Exceptions found in the source language or classification</p></div></div>'+(fileRisks.map(r=>'<div class="risk-item"><i class="dot"></i><div><strong>'+renderEsc(r.msg)+'</strong><div class="source">'+renderEsc(r.source)+'</div></div></div>').join('')||'<div class="empty-small">No document warnings detected.</div>')+'</article></div>';
 }
 function refresh(){
- const m=derive();renderOverview(m);renderDocList(m);renderBudget(m);renderCapital(m);renderCashflow(m);renderSellout(m);renderDiligence(m);renderExceptions(m);
+ const m=derive();renderOverview(m);renderDocList(m);renderBudget(m);renderCapital(m);renderCashflow(m);renderSellout(m);renderDiligence(m);renderExceptions(m);renderRouting(m);renderModuleEvidence(m);
  $('top-project').textContent=m.values.name|| (state.mode==='test'?'Fictional Development Test · Awaiting Documents':'New blank development project');
  $('status').textContent=state.busy?'PROCESSING':m.errors.length?m.errors.length+' FILE FAILURE(S)':m.docs.length?'MODEL POPULATED · REVIEW REQUIRED':'BLANK CANVAS';
  $('status').className='pill '+(m.errors.length?'red':m.docs.length?'orange':'');
  $('side-exceptions').textContent=m.issues.length+m.errors.length;$('btn-export').disabled=!m.docs.length;
+ $('side-routing').textContent=m.docs.length;
 
  if(!state.busy&&window.parent&&window.parent!==window){
-  const snapshot={values:m.values,sources:m.sources,cap:m.cap,draws:m.draws,documents:m.docs.length,issues:m.issues.length,finance:{cost:m.cost,gross:m.gross,net:m.net,profit:m.profit}};
+  const snapshot={values:m.values,sources:m.sources,cap:m.cap,draws:m.draws,documents:m.docs.length,logicalDocuments:new Set(m.docs.map(d=>d.name.replace(/^(\d+)_.*$/,'$1'))).size,routedFiles:m.docs.filter(d=>routeInfo(d,m).routes.length).length,issues:m.issues.length,finance:{cost:m.cost,gross:m.gross,net:m.net,profit:m.profit}};
   window.parent.postMessage({type:'PFI_WORKSPACE_SNAPSHOT',snapshot},location.origin);
  }
 

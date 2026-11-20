@@ -16,7 +16,7 @@
      lastSnapshot=e.data.snapshot;
      try{sessionStorage.setItem('pfi-unified-model-v1',JSON.stringify(lastSnapshot))}catch(err){}
      let indicator=document.getElementById('unifiedStatus');
-     if(indicator){indicator.textContent=lastSnapshot?.documents?lastSnapshot.documents+' documents · modeled CFO data ready':'No source data uploaded'}
+     if(indicator){indicator.textContent=lastSnapshot?.documents?lastSnapshot.documents+' files / '+(lastSnapshot.logicalDocuments||lastSnapshot.documents)+' documents routed · CFO model ready':'No source data uploaded'}
    }
    if(e.data.type==='PFI_DEV_MODEL_READY')sendToDevelopment();
  });
